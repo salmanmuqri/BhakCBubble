@@ -1,0 +1,425 @@
+<!-- 
+eed
+tgvjrsfd/////////////////
+scra///////////////////////////////////////////////////////////////////////
+sghhys///////////////////////////////////////////////////////////////////
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Assassin Training: Cosmic Jet Blaster</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: linear-gradient(135deg, #0a192f, #20232a);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: 'Arial', sans-serif;
+            /* cursor: none; */
+            user-select: none;
+
+        }
+
+        #gameCanvas {
+            background: radial-gradient(ellipse at center, #1a2980, #26d0ce);
+            box-shadow: 0 0 50px rgba(0,255,255,0.3), 0 0 100px rgba(38,208,206,0.2);
+            border-radius: 15px;
+        }
+
+        #gameInfo {
+            position: absolute;
+            top: 20px;
+            width: 100%;
+            display: flex;
+            justify-content: space-around;
+            color: #00ffff;
+            font-size: 24px;
+            text-shadow: 0 0 10px rgba(0,255,255,0.7);
+        }
+
+        #gameOverlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            text-align: center;
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameInfo">
+        <span id="levelDisplay">Level: 1</span>
+        <span id="scoreDisplay">Score: 0</span>
+        <span id="targetDisplay">Target: 100</span>
+        <span id="timerDisplay">Time: 60</span>
+    </div>
+    <div id="gameOverlay">
+        <div id="gameStatus">Game Over!</div>
+        <div id="finalScore"></div>
+        <div id="nextLevelInfo"></div>
+    </div>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const levelDisplay = document.getElementById('levelDisplay');
+        const scoreDisplay = document.getElementById('scoreDisplay');
+        const targetDisplay = document.getElementById('targetDisplay');
+        const timerDisplay = document.getElementById('timerDisplay');
+        const gameOverlay = document.getElementById('gameOverlay');
+        const gameStatus = document.getElementById('gameStatus');
+        const finalScoreDisplay = document.getElementById('finalScore');
+        const nextLevelInfo = document.getElementById('nextLevelInfo');
+
+        const CONFIG = {
+            bubbleRadius: 20,
+            cannonWidth: 10,
+            cannonHeight: 50,
+            bubbleColors: [
+                '#FF6B6B', '#4ECDC4', '#45B7D1', 
+                '#FDCB6E', '#6C5CE7', '#FF8A5B'
+            ],
+            backgroundStars: [],
+            levels: [
+                { target: 100, time: 60 },
+                { target: 200, time: 90 },
+                { target: 300, time: 120 },
+                { target: 400, time: 150 },
+                { target: 500, time: 180 },
+                { target: 600, time: 210 },
+                { target: 700, time: 240 },
+                { target: 800, time: 270 },
+                { target: 900, time: 300 },
+                { target: 1000, time: 360 }
+            ]
+        };
+
+        class Star {
+            constructor() {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height;
+                this.radius = Math.random() * 2;
+                this.opacity = Math.random();
+                this.speed = Math.random() * 0.5;
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.globalAlpha = this.opacity;
+                ctx.fillStyle = 'white';
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.globalAlpha = 1;
+            }
+
+            update() {
+                this.y += this.speed;
+                if (this.y > canvas.height) {
+                    this.y = 0;
+                    this.x = Math.random() * canvas.width;
+                }
+            }
+        }
+
+        class Bubble {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.color = color;
+                this.radius = CONFIG.bubbleRadius;
+                this.velocity = { x: 0, y: 0 };
+                this.active = true;
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = this.color;
+                ctx.fillStyle = this.color;
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            }
+
+            update() {
+                this.x += this.velocity.x;
+                this.y += this.velocity.y;
+            }
+
+            intersects(jet) {
+                const dx = this.x - jet.x;
+                const dy = this.y - jet.y;
+                return Math.sqrt(dx * dx + dy * dy) < (this.radius + jet.width / 2);
+            }
+        }
+
+        class FighterJet {
+            constructor() {
+                this.x = -100;
+                this.y = Math.random() * (canvas.height / 2);
+                this.width = 100;
+                this.height = 40;
+                this.speed = Math.random() * 5 + 2;
+                this.color = this.generateJetColor();
+            }
+
+            generateJetColor() {
+                const colors = ['#333333', '#4A4A4A', '#5D5D5D', '#707070', '#838383'];
+                return colors[Math.floor(Math.random() * colors.length)];
+            }
+
+            draw() {
+                // Main body
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.moveTo(this.x, this.y);
+                ctx.lineTo(this.x - this.width, this.y - this.height / 4);
+                ctx.lineTo(this.x - this.width, this.y + this.height / 4);
+                ctx.closePath();
+                ctx.fill();
+
+                // Cockpit
+                ctx.fillStyle = '#1E90FF';
+                ctx.beginPath();
+                ctx.arc(this.x - this.width * 0.7, this.y, 10, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Wing details
+                ctx.fillStyle = 'rgba(255,255,255,0.3)';
+                ctx.beginPath();
+                ctx.moveTo(this.x - this.width * 0.8, this.y - this.height / 2);
+                ctx.lineTo(this.x - this.width * 0.6, this.y);
+                ctx.lineTo(this.x - this.width * 0.8, this.y + this.height / 2);
+                ctx.closePath();
+                ctx.fill();
+            }
+
+            update() {
+                this.x += this.speed;
+            }
+        }
+
+        class Game {
+            constructor() {
+                this.bubbles = [];
+                this.jets = [];
+                this.cannon = {
+                    x: canvas.width / 2,
+                    y: canvas.height - 50
+                };
+                this.score = 0;
+                this.level = 1;
+                this.lastShotTime = 0;
+                this.initStars();
+                this.setupLevel();
+            }
+
+            initStars() {
+                CONFIG.backgroundStars = Array.from({length: 200}, () => new Star());
+            }
+
+            setupLevel() {
+                const currentLevel = CONFIG.levels[this.level - 1];
+                this.timeRemaining = currentLevel.time;
+                this.targetScore = currentLevel.target;
+                this.gameOver = false;
+
+                levelDisplay.textContent = `Level: ${this.level}`;
+                targetDisplay.textContent = `Target: ${this.targetScore}`;
+
+                this.startTimer();
+            }
+
+            startTimer() {
+                clearInterval(this.timerInterval);
+                this.timerInterval = setInterval(() => {
+                    this.timeRemaining--;
+                    if (this.timeRemaining <= 0) {
+                        this.endGame();
+                    }
+                }, 1000);
+            }
+
+            spawnJets() {
+                if (Math.random() < 0.02 && this.jets.length < 5) {
+                    this.jets.push(new FighterJet());
+                }
+            }
+
+            drawBackground() {
+                CONFIG.backgroundStars.forEach(star => {
+                    star.update();
+                    star.draw();
+                });
+            }
+
+            drawCannonAimer(mouseX, mouseY) {
+                const angle = Math.atan2(mouseY - this.cannon.y, mouseX - this.cannon.x);
+
+                ctx.save();
+                ctx.translate(this.cannon.x, this.cannon.y);
+                ctx.rotate(angle);
+
+                // Cannon body
+                ctx.fillStyle = '#2C3E50';
+                ctx.fillRect(-5, -25, 10, 50); 
+
+                // Aiming arrow
+                ctx.beginPath();
+                ctx.moveTo(5, 0); 
+                ctx.lineTo(40, 0);
+                ctx.lineTo(35, -5);
+                ctx.moveTo(40, 0);
+                ctx.lineTo(35, 5);
+                ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+                ctx.lineWidth = 3;
+                ctx.stroke();
+
+                ctx.restore();
+
+            }
+
+            shoot(mouseX, mouseY) {
+                const currentTime = Date.now();
+                if (currentTime - this.lastShotTime < 500) return;
+
+                const angle = Math.atan2(mouseY - this.cannon.y, mouseX - this.cannon.x);
+                const speed = 10;
+                
+                const bubble = new Bubble(
+                    this.cannon.x, 
+                    this.cannon.y, 
+                    CONFIG.bubbleColors[Math.floor(Math.random() * CONFIG.bubbleColors.length)]
+                );
+                
+                bubble.velocity.x = Math.cos(angle) * speed;
+                bubble.velocity.y = Math.sin(angle) * speed;
+                
+                this.bubbles.push(bubble);
+                this.lastShotTime = currentTime;
+            }
+
+            checkCollisions() {
+                for (let i = this.bubbles.length - 1; i >= 0; i--) {
+                    for (let j = this.jets.length - 1; j >= 0; j--) {
+                        if (this.bubbles[i].intersects(this.jets[j])) {
+                            this.bubbles.splice(i, 1);
+                            this.jets.splice(j, 1);
+                            this.score += 10;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            update() {
+                this.bubbles = this.bubbles.filter(bubble => 
+                    bubble.x > 0 && bubble.x < canvas.width && 
+                    bubble.y > 0 && bubble.y < canvas.height
+                );
+
+                this.jets = this.jets.filter(jet => jet.x < canvas.width + 100);
+            }
+
+            checkLevelProgress() {
+                if (this.score >= this.targetScore) {
+                    this.levelUp();
+                }
+            }
+
+            levelUp() {
+                if (this.level < 10) {
+                    this.level++;
+                    this.score = 0;
+                    this.jets = [];
+                    this.bubbles = [];
+                    this.setupLevel();
+                } else {
+                    this.winGame();
+                }
+            }
+
+            endGame() {
+                clearInterval(this.timerInterval);
+                this.gameOver = true;
+                gameOverlay.style.display = 'flex';
+                gameStatus.textContent = 'Mission Failed!';
+                finalScoreDisplay.textContent = `Your Score: ${this.score}`;
+                nextLevelInfo.textContent = `Target for Level ${this.level}: ${this.targetScore}`;
+            }
+
+            winGame() {
+                clearInterval(this.timerInterval);
+                this.gameOver = true;
+                gameOverlay.style.display = 'flex';
+                gameStatus.textContent = 'Congratulations! 🎉';
+                gameStatus.innerHTML += '<br>You have successfully finished your training as an Assassin!';
+                finalScoreDisplay.textContent = `Total Score: ${this.score}`;
+            }
+
+            render(mouseX, mouseY) {
+                if (this.gameOver) return;
+
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                
+                this.drawBackground();
+                this.drawCannonAimer(mouseX, mouseY);
+                
+                this.bubbles.forEach(bubble => {
+                    bubble.update();
+                    bubble.draw();
+                });
+
+                this.jets.forEach(jet => {
+                    jet.update();
+                    jet.draw();
+                });
+
+                this.spawnJets();
+                this.checkCollisions();
+                this.checkLevelProgress();
+                
+                scoreDisplay.textContent = `Score: ${this.score}`;
+                timerDisplay.textContent = `Time: ${this.timeRemaining}`;
+            }
+        }
+
+        const game = new Game();
+        let mouseX = canvas.width / 2;
+        let mouseY = canvas.height / 2;
+
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            mouseX = e.clientX - rect.left;
+            mouseY = e.clientY - rect.top;
+        });
+
+        canvas.addEventListener('click', () => {
+            if (!game.gameOver) {
+                game.shoot(mouseX, mouseY);
+            }
+        });
+
+        function gameLoop() {
+            game.update();
+            game.render(mouseX, mouseY);
+            requestAnimationFrame(gameLoop);
+        }
+
+        gameLoop();
+    </script>
+</body>
+</html>
